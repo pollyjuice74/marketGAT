@@ -13,7 +13,7 @@ interval = '30m'
 
 class Dataset(HeteroData):
     def __init__(self):
-        self.symbols = 
+        self.symbols = None
         self.symbol_graphs = []
 
     def __getitem__(self):
