@@ -8,7 +8,8 @@ This repo is implementing a Graph Neural Network using PyTorch Geometric to pred
 
 `data.py`: Other
 
-
+The thought process:
+---
 
 Essentially each **stock** is visualized as a **linked graph of nodes** connected through time each node contains the **High, Low, Close, Open prices** for a given time interval (30m, 1h, etc.). 
 
