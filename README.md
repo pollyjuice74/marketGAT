@@ -2,7 +2,7 @@
 This repo is implementing a Graph Neural Network using PyTorch Geometric to predict market activity in a short period of time. 
 
 ## Contents:
-`marketGPT`: Sandbox for tinkering and designing with the data and models.
+`marketGPT.ipynb`: Sandbox for tinkering and designing with the data and models.
 
 `model.py`: Contains Account object for simulating trading, HGT model, HGTConv layer, Stock object to simulate stock possesion.
 
