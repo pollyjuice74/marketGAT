@@ -25,24 +25,58 @@ in_channels, out_channels = 0, 0
 
 
 
-class Stock:
-    def __init__(self, sym, ammount, train=True):
-        self.price = self.get_price(sym) # setted with live_price
-        self.total = ammount * self.live_price(sym) if train else ammount * self.price(sym)
+def construct_bipartite_edge_index(
+    edge_index_dict: Dict[EdgeType, Adj],
+    src_offset_dict: Dict[EdgeType, int],
+    dst_offset_dict: Dict[NodeType, int],
+    edge_attr_dict: Optional[Dict[EdgeType, Tensor]] = None,
+    num_nodes: Optional[int] = None,
+) -> Tuple[Adj, Optional[Tensor]]:
 
-        self.graph = build(sym)
+    is_sparse_tensor = False
+    edge_indices: List[Tensor] = []
+    edge_attrs: List[Tensor] = []
+    for edge_type, src_offset in src_offset_dict.items():
+        edge_index = edge_index_dict[edge_type]
+        dst_offset = dst_offset_dict[edge_type[-1]]
 
+        # TODO Add support for SparseTensor w/o converting.
+        #print(edge_index, SparseTensor)
+        is_sparse_tensor = isinstance(edge_index, SparseTensor)
+        if is_sparse(edge_index):
+            edge_index, _ = to_edge_index(edge_index)
+            edge_index = edge_index.flip([0])
+        else:
+            edge_index = edge_index.clone()
 
-    def live_price(self, sym):
-        pass
+        edge_index[0] += src_offset
+        edge_index[1] += dst_offset
+        edge_indices.append(edge_index)
 
+        if edge_attr_dict is not None:
+            if isinstance(edge_attr_dict, ParameterDict):
+                value = edge_attr_dict['__'.join(edge_type)]
+            else:
+                value = edge_attr_dict[edge_type]
+            if value.size(0) != edge_index.size(1):
+                value = value.expand(edge_index.size(1), -1)
+            edge_attrs.append(value)
 
-    def price(self, sym):
-        pass
+    edge_index = torch.cat(edge_indices, dim=1)
 
+    edge_attr: Optional[Tensor] = None
+    if edge_attr_dict is not None:
+        edge_attr = torch.cat(edge_attrs, dim=0)
 
-    def build(self, sym):
-        pass
+    if is_sparse_tensor:
+        edge_index = SparseTensor(
+            row=edge_index[1],
+            col=edge_index[0],
+            value=edge_attr,
+            sparse_sizes=(num_nodes, num_nodes),
+        )
+
+    return edge_index, edge_attr
 
 
 
@@ -162,8 +196,124 @@ class HGTConv(MessagePassing):
         v = self.v_rel(vs, type_vec).view(H, -1, D).transpose(0, 1)
 
         return k, v, offset
+    
+
+###############################################################################################
+    def propagate(
+      self,
+      edge_index: Adj,
+      size: Size = None,
+      **kwargs: Any,
+      ) -> Tensor:
+
+      decomposed_layers = 1 if self.explain else self.decomposed_layers
+
+      for hook in self._propagate_forward_pre_hooks.values():
+          res = hook(self, (edge_index, size, kwargs))
+          if res is not None:
+              edge_index, size, kwargs = res
+
+      mutable_size = self._check_input(edge_index, size)
+
+      # Run "fused" message and aggregation (if applicable).
+      fuse = False
+      if self.fuse and not self.explain:
+          if is_sparse(edge_index):
+              fuse = True
+          elif (not torch.jit.is_scripting()
+                and isinstance(edge_index, EdgeIndex)):
+              if (self.SUPPORTS_FUSED_EDGE_INDEX
+                      and edge_index.is_sorted_by_col):
+                  fuse = True
+
+      if fuse:
+          coll_dict = self._collect(self._fused_user_args, edge_index,
+                                    mutable_size, kwargs)
+
+          msg_aggr_kwargs = self.inspector.collect_param_data(
+              'message_and_aggregate', coll_dict)
+          for hook in self._message_and_aggregate_forward_pre_hooks.values():
+              res = hook(self, (edge_index, msg_aggr_kwargs))
+              if res is not None:
+                  edge_index, msg_aggr_kwargs = res
+          out = self.message_and_aggregate(edge_index, **msg_aggr_kwargs)
+          for hook in self._message_and_aggregate_forward_hooks.values():
+              res = hook(self, (edge_index, msg_aggr_kwargs), out)
+              if res is not None:
+                  out = res
+
+          update_kwargs = self.inspector.collect_param_data(
+              'update', coll_dict)
+          out = self.update(out, **update_kwargs)
+
+      else:  # Otherwise, run both functions in separation.
+          if decomposed_layers > 1:
+              user_args = self._user_args
+              decomp_args = {a[:-2] for a in user_args if a[-2:] == '_j'}
+              decomp_kwargs = {
+                  a: kwargs[a].chunk(decomposed_layers, -1)
+                  for a in decomp_args
+              }
+              decomp_out = []
+
+          for i in range(decomposed_layers):
+              if decomposed_layers > 1:
+                  for arg in decomp_args:
+                      kwargs[arg] = decomp_kwargs[arg][i]
+
+              coll_dict = self._collect(self._user_args, edge_index, ######## ERROR
+                                        mutable_size, kwargs)
+
+              msg_kwargs = self.inspector.collect_param_data(
+                  'message', coll_dict)
+              for hook in self._message_forward_pre_hooks.values():
+                  res = hook(self, (msg_kwargs, ))
+                  if res is not None:
+                      msg_kwargs = res[0] if isinstance(res, tuple) else res
+              out = self.message(**msg_kwargs)
+              for hook in self._message_forward_hooks.values():
+                  res = hook(self, (msg_kwargs, ), out)
+                  if res is not None:
+                      out = res
+
+              if self.explain:
+                  explain_msg_kwargs = self.inspector.collect_param_data(
+                      'explain_message', coll_dict)
+                  out = self.explain_message(out, **explain_msg_kwargs)
+
+              aggr_kwargs = self.inspector.collect_param_data(
+                  'aggregate', coll_dict)
+              for hook in self._aggregate_forward_pre_hooks.values():
+                  res = hook(self, (aggr_kwargs, ))
+                  if res is not None:
+                      aggr_kwargs = res[0] if isinstance(res, tuple) else res
+
+              out = self.aggregate(out, **aggr_kwargs)
+
+              for hook in self._aggregate_forward_hooks.values():
+                  res = hook(self, (aggr_kwargs, ), out)
+                  if res is not None:
+                      out = res
+
+              update_kwargs = self.inspector.collect_param_data(
+                  'update', coll_dict)
+              out = self.update(out, **update_kwargs)
+
+              if decomposed_layers > 1:
+                  decomp_out.append(out)
+
+          if decomposed_layers > 1:
+              out = torch.cat(decomp_out, dim=-1)
+
+      for hook in self._propagate_forward_hooks.values():
+          res = hook(self, (edge_index, mutable_size, kwargs), out)
+          if res is not None:
+              out = res
+
+      return out
 
 
+############################################################################################
     def forward(
         self,
         x_dict: Dict[NodeType, Tensor],
@@ -177,7 +327,7 @@ class HGTConv(MessagePassing):
 
         # Compute K, Q, V over node types:
         kqv_dict = self.kqv_lin(x_dict)
-        print(kqv_dict)
+        #print(kqv_dict)
         for key, val in kqv_dict.items():
             k, q, v = torch.tensor_split(val, 3, dim=1)
             k_dict[key] = k.view(-1, H, D)
@@ -188,13 +338,17 @@ class HGTConv(MessagePassing):
         k, v, src_offset = self._construct_src_node_feat(
             k_dict, v_dict, edge_index_dict)
 
+        # print(edge_index_dict)
+        edge_index_used = torch.cat([edge_index_dict[key] for key in edge_index_dict], dim=1) # cat all tensors in edge_index_dict to shape [2, num_edges]
+
         edge_index, edge_attr = construct_bipartite_edge_index(
             edge_index_dict, src_offset, dst_offset, edge_attr_dict=self.p_rel,
             num_nodes=k.size(0))
 
-        print(edge_index.shape, k.permute(2, 1, 0).shape, q.shape, v.permute(2, 1, 0).shape, edge_attr.shape)
-        print(edge_index)
-        out = self.propagate(edge_index, k=k.permute(2, 1, 0), q=q, v=v.permute(2, 1, 0), edge_attr=edge_attr)
+        print(edge_index.shape, edge_index_used.shape)
+        out = self.propagate(edge_index_used, k=k, q=q, v=v, edge_attr=edge_attr)
+
+        #print(edge_index.shape, k.permute(2, 1, 0).shape, q.permute(0, 2, 1).shape, v.permute(2, 1, 0).shape, k.size(2))
 
         # Reconstruct output node embeddings dict:
         for node_type, start_offset in dst_offset.items():
@@ -219,6 +373,7 @@ class HGTConv(MessagePassing):
             out_dict[node_type] = out
 
         return out_dict
+############################################################################################
 
 
     def message(self, k_j: Tensor, q_i: Tensor, v_j: Tensor, edge_attr: Tensor,
@@ -240,7 +395,7 @@ class HGTConv(MessagePassing):
 class HGT(torch.nn.Module):
     def __init__(self, metadata, hidden_channels, num_classes=3, heads=1, num_layers=1):
         super().__init__()
-
+        self.hidden_channels = hidden_channels
         # node_type: linear layer
         self.lin_dict = torch.nn.ModuleDict()
 
@@ -261,14 +416,14 @@ class HGT(torch.nn.Module):
 
     def forward(self, x_dict, edge_index_dict, edge_attr=None):
         # print([v.shape for k, v in x_dict.items()])
-        # print(edge_index_dict)
+        print(len(edge_index_dict))
 
         for node_type, x in x_dict.items():
             out_channels = x.size(0)
-            layer = Linear(out_channels, 245)
+            layer = Linear(out_channels, self.hidden_channels)
             x_dict[node_type] = layer(x.T).relu()
 
-        print([v.shape for k, v in x_dict.items()])
+        #print([v.shape for k, v in x_dict.items()])
         #print(x_dict)
 
         for conv in self.convs:
@@ -276,99 +431,3 @@ class HGT(torch.nn.Module):
 
         return self.classifier(x_dict)
 
-
-
-class Account:
-    def __init__(self, hidden_channels=7*35, epochs=2000, learning_rate=1e-05):
-        # Account info
-        self.net_value = 416.29
-        self.symbols = ['AMZN',] #"TSLA", "AAPL", "GOOGL", "META", "GM", "MS"]
-        self.bets = 100 # Limited ammount of bets per day
-        # Bets
-        self.current_bets = {sym: 0 for sym in self.symbols}
-        self.stocks = [] # Graphs of stocks
-        # Data
-        self.graph = build_graph(self.symbols)
-        # Model
-        self.model = HGT(metadata=self.graph.metadata(), hidden_channels=hidden_channels)
-        # Training
-        self.epochs = epochs
-        self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=learning_rate)
-        self.criterion = nn.BCEWithLogitsLoss()
-        ##################################################
-
-
-    def train(self):
-        for i in range(self.epochs):
-            epoch_loss = 0
-            for sym in self.symbols:
-                print("\nTraining on: ", sym)
-
-                for _ in range(1000): # sample 1000 times
-                    sample_graph, ix = sample(self.graph, sym) # Samples Training graph nodes
-                    pct = torch.std(sample_graph[sym].x_samp) * 0.5 # try to predict a half std movement
-                    print("Percent pred: ", pct.item())
-
-                    while sample_graph[sym].x_pred.numel() > 0: # while there is more data to predict
-
-                        y_hat = self.model(sample_graph.x_samp_dict, sample_graph.edge_index_dict)
-                        y = movement(sample_graph[sym].x_pred[0], pct=pct.item())
-
-                        loss = self.criterion(y_hat, y)
-                        step(sample_graph, ix, sym)
-
-                        self.optimizer.zero_grad(set_to_none=True)
-                        loss.backward()
-                        self.optimizer.step()
-
-                epoch_loss += loss.item()
-
-                self.print(i, epoch_loss, freq=25)
-
-
-
-
-    def test(self, graph, live=False): # Live trading simulation
-        for sym in self.symbols:
-            x, edge_index = sample_graph_live(graph, sym) if live else sample_graph(graph, sym)# Samples LIVE graph nodes
-            pred = self.model(x, edge_index, pct=0.03)
-
-            if self.buy_conditions(pred):
-                ammount = self.get_portion()
-                self.buy(sym, ammount)
-        
-        self.wait()
-        self.sell(sym, ammount)
-
-
-    def get_portion(self):
-        pass
-
-
-    def buy_conditions(self):
-        pass
-
-
-    def print(self, i, epoch_loss, freq=25):
-        if i % freq == 0:
-            print(f"Epoch: {i+1}/{self.epochs}, Loss: {epoch_loss}")
-
-
-    def buy(self, sym, ammount):
-        self.current_bets[sym] += ammount # sym: ammount of stocks owned
-
-        stock = Stock(sym, ammount)
-        self.net_value -= ammount * stock.price
-        
-        self.stocks.append(stock)
-
-
-    def wait(self):
-        time.sleep(10)
-
-
-    def sell(self, stock, sym, ammount):
-        self.current_bets[sym] -= ammount # sym: ammount of stocks owned
-        self.net_value += ammount * stock.price
-        
-        self.stocks.remove(stock)
