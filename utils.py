@@ -73,11 +73,11 @@ def link_graphs(sp_nodes, stock_nodes):
 
 
 #######################################################################
-def sample(graph, sym, sample_len=7*30, pred_len=7*5):
+def sample(graph, sym, sample_len, pred_len, live=False):
   sample_graph = HeteroData()
 
   # random stock sample index
-  s_ix = torch.randint(0, graph[sym].x.size(0) - sample_len - pred_len, (1,))
+  s_ix = torch.randint(0, graph[sym].x.size(0) - sample_len - pred_len, (1,)) if not live else int(graph[sym].x.size(0) - sample_len - pred_len)
   curr_ix = s_ix+sample_len
 
   # stock graph
@@ -114,9 +114,10 @@ def sample(graph, sym, sample_len=7*30, pred_len=7*5):
   sample_graph['SPY', 'same_time', sym].edge_index = same_time_edges
 
   # normalize stock data
-  sample_graph[sym].x_samp, sample_graph[sym].x_pred = normalize(sample_graph[sym].x, curr_ix=curr_ix - s_ix, pred_ix=curr_ix+pred_len - s_ix) # shifts ixs by first stock ix
-  sample_graph['SPY'].x_samp, sample_graph['SPY'].x_pred = normalize(sample_graph['SPY'].x, curr_ix=c_sp_ix - f_sp_ix, pred_ix=l_sp_ix - f_sp_ix) # shifts ixs by first spy stock ix
+  sample_graph[sym].x_samp, sample_graph[sym].x_pred, buy_price = normalize(sample_graph[sym].x, curr_ix=curr_ix - s_ix, pred_ix=curr_ix+pred_len - s_ix) # shifts ixs by first stock ix
+  sample_graph['SPY'].x_samp, sample_graph['SPY'].x_pred, _ = normalize(sample_graph['SPY'].x, curr_ix=c_sp_ix - f_sp_ix, pred_ix=l_sp_ix - f_sp_ix) # shifts ixs by first spy stock ix
 
+  sample_graph.buy_price = buy_price
   # EDGE_INDEX_SAMP, EDGE_INDEX_PRED
   #
   #
@@ -178,13 +179,13 @@ def step(sample_graph, ix, sym):
 
 def normalize(x, curr_ix, pred_ix):
   x_samp = x[:curr_ix]
-  last_close = float(x_samp[-1, 2]) # Scale by last Close price
+  last_close = float(x_samp[-1, 2]) # Scale by last Close price, buy price
 
   x_samp /= last_close
 
   x_pred = x[curr_ix:pred_ix+1]
   x_pred /= last_close
-  return x_samp, x_pred
+  return x_samp, x_pred, last_close 
 
 
 def movement(x_pred, pct=0.03):
