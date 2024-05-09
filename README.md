@@ -4,11 +4,11 @@ This repo is implementing a Graph Neural Network using PyTorch Geometric to pred
 ## Contents:
 `marketGPT.ipynb`: Sandbox for tinkering and designing with the data and models.
 
-`model.py`: Contains Account object for simulating trading, HGT model, HGTConv layer, Stock object to simulate stock possesion.
+`model.py`: Contains HGT model, HGTConv layer.
 
 `utils.py`: Contains functions to create the data, main functs include `build_graph()` which builds the graph of stocks, `sample()` samples stock to SPY market index, `step()` steps to simulate trading by adding new time nodes. 
 
-`data.py`: Other...
+`acc.py`: Contains Account object for simulating trading and Stock object to simulate stock possesion.
 
 The thought process:
 ---
