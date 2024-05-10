@@ -4,15 +4,19 @@ import torch.nn.functional as F
 import torch.nn as nn
 import time
 import random
-import copy
+import yfinance as yf
 
-# from model import *
-# from utils import *
+
+from torch_geometric.data import Data, Batch
+from torch_geometric.data import TemporalData, HeteroData
+
+from model import *
+from utils import *
 
 
 
 class Account:
-    def __init__(self, hidden_channels=7*30, epochs=2000, learning_rate=1e-05, live=False):
+    def __init__(self, hidden_channels=7*30, epochs=2000, learning_rate=1e-05, live=True):
         # Account info
         self.history = list() # Tape of transaction history
         self.net_value = 416.29
@@ -20,12 +24,12 @@ class Account:
         self.used = None # [1, 8]
         self.bets = 2 # Limited ammount of bets per day
         # Data
-        self.symbols = ['TBLA', 'SPY'] # "AMZN", "TSLA", "AAPL", "GOOGL", "META", "GM", "MS"]
+        self.symbols = ['SPY', 'TBLA', "MS", "PBM", "TCRX", "URG", "UROY", "UEC", "TBLA"]#"AMZN", "TSLA", "AAPL", "GOOGL", "META", "GM", "MS"]
         self.graph = build_graph(self.symbols)
         self.sample_graph = None
         # Bets
         self.live = live
-        self.current_bets = {sym: [] for sym in self.symbols} # sym: [(amount in $, shares), ..., ]
+        self.current_bets = {sym: [] for sym in self.symbols if sym != 'SPY'} # sym: [(amount in $, shares), ..., ]
         self.stocks = {sym: Stock(sym, live=live, graph=self.graph) for sym in self.symbols} # Graphs of stocks
         # Model
         self.model = HGT(metadata=self.graph.metadata(), hidden_channels=hidden_channels)
@@ -55,7 +59,7 @@ class Account:
 
 
 
-        ixs = (self.used==0).nonzero(as_tuple=True)[0].tolist()# first portion that is not 0 or negative,
+        ixs = (self.used==0).nonzero(as_tuple=True)[0].tolist()# first portion that != 0 or negative,
         ix = random.choice(ixs)
         amount = torch.clone(self.portions[ix]) # select amount $
 
@@ -125,7 +129,7 @@ class Account:
 
     def wait(self):
         """ Wait some time before continuing """
-        time.sleep(3)
+        time.sleep(10)
 
 
     def buy_conditions(self, pred):
@@ -190,30 +194,9 @@ class Account:
         and gives a profitablility calculation based on model predictions.
         """
         while True:
-          # Print info
-          if self.portions is not None:
-            net_val = self.net_value + torch.sum(self.portions) + sum([bet[0] for sym, bets in self.current_bets.items() for bet in bets])
-          else:
-            net_val = self.net_value
-
-          print(
-                f"""
-                  Account net_value: {net_val}\n
-
-                  Portions:
-                  {self.portions}\n
-                  Used:
-                  {self.used}\n
-
-                  Current bets: {self.current_bets}\n
-                  Trailing prices:\n
-                  { {sym: stock.trailing_data[0] for sym, stock in self.stocks.items() if stock is not None} }
-                  """
-          )
-
 
           # Checks for buying conditions in all symbols
-          for sym in [sym for sym, curr_bets in self.current_bets.items() if not curr_bets]: #self.symbols:
+          for sym in [sym for sym, curr_bets in self.current_bets.items() if not curr_bets and sym != 'SPY']: #self.symbols:
               print("Checking for buying conditions: ", sym)
 
               stock = self.stocks[sym]
@@ -234,7 +217,7 @@ class Account:
               ################################
 
               if self.buy_conditions(pred):
-                  if self.used is not None and torch.all(self.used.bool()):
+                  if self.used != None and torch.all(self.used.bool()):
                     print("No more portions left.")
                     break
 
@@ -242,7 +225,7 @@ class Account:
                   self.buy(sym, amount, used_ix) #if ix is None
 
           ### Inbetween period ######
-          if self.live or True:
+          if self.live:
             self.wait()
 
           self.update_graph()
@@ -250,17 +233,54 @@ class Account:
 
           # Checks for selling conditions in all symbols
           for sym in self.symbols:
+              if sym == 'SPY':
+                continue
+
               stock = self.stocks[sym]
               print("Monitoring: ", sym, "at ", stock.pct.item()*100, "%")
 
               # Sell at profit or sell at the end of the prediction time
-              print(stock.sample_graph[sym].x_pred, torch.any(stock.sample_graph[sym].x_pred))
-              if self.pull_back(sym) or not torch.any(stock.sample_graph[sym].x_pred): # x_pred is not empty
+              #print(stock.sample_graph[sym].x_pred, torch.any(stock.sample_graph[sym].x_pred))
+              if self.pull_back(sym) or not torch.any(stock.sample_graph[sym].x_pred): # x_pred != empty
                   self.sell(sym) # sells all stocks owned of that symbol
 
                   if not torch.any(stock.sample_graph[sym].x_pred):
                     stock.sample_graph, stock.ix = sample(self.graph, sym, stock.sample_len, stock.pred_len, live=self.live)
                     self.stocks[sym] = stock # save new sample_graph
+
+
+          self.print_acc()
+
+
+    def print_acc(self):
+        """ Print info for the account """
+
+        if self.portions != None:
+          net_val = self.net_value + torch.sum(self.portions) + sum([bet[0] for sym, bets in self.current_bets.items() for bet in bets])
+        else:
+          net_val = self.net_value
+
+        for stock in self.stocks.values():
+          if stock is not None:
+              stock.update()
+
+        print(
+              f"""
+                Account net_value: {net_val}\n
+
+                Portions:
+                {self.portions}\n
+                Used:
+                {self.used}\n
+
+                Current bets: {self.current_bets}\n
+                Trailing prices:\n
+                { {sym: stock.trailing_data[0] for sym, stock in self.stocks.items() if stock != None and sym != 'SPY'} }
+              
+                LIVE PRICES:
+                { {sym: stock.price.item() for sym, stock in self.stocks.items() if stock is not None} }
+                """
+        )
 
 
     def update_graph(self): ###
@@ -313,7 +333,7 @@ class Account:
             stock.trailing_data[0] = trailing_price = target_price.item()
 
         if stock.price >= target_price or active:
-            print(stock.trailing_data)
+            #print(stock.trailing_data)
             stock.trailing_data[1] = 1 # set 'active' True
 
             if stock.price < trailing_price * (1-pull): # SELL CONDITION
@@ -321,7 +341,7 @@ class Account:
                 return True
 
             if stock.price > trailing_price:
-                print(stock.trailing_data)
+                #print(stock.trailing_data)
                 stock.trailing_data[0] = stock.price # update 'trailing_price'
 
         return False
@@ -377,8 +397,9 @@ class Stock:
 
     def sample_live(self, graph, sym): ###
         """ Sample live stock prices """
-        self.update_graph()
-        sample_graph, ix = sample(self.graph, sym, sample_len=self.sample_len, pred_len=self.pred_len, live=True)
+        self.update() # sets live price
+
+        sample_graph, ix = sample(graph, sym, self.sample_len, self.pred_len, live=self.live)
         return sample_graph, ix
 
 
@@ -387,47 +408,10 @@ class Stock:
         if self.live:
             self.sample_graph, self.ix = self.sample_live(graph, self.sym)
         else:
-            self.sample_graph, self.ix = sample(graph, self.sym, self.sample_len, self.pred_len)
+            self.sample_graph, self.ix = sample(graph, self.sym, self.sample_len, self.pred_len, self.live)
+            self.update()
 
         pct = None
         self.pct = pct
 
         self.trailing_data[0] = self.sample_graph.buy_price # missing used_ix
-
-        self.update() # sets price
-
-
-
-def step(sample_graph, ix, sym):
-  """
-  Makes a time step through the sample_graph
-
-  Updates:
-    - x samp/pred
-    - edge_index samp/pred
-    - t samp/pred
-    - node_ids samp/pred
-  """
-  # Update x_samp and x_pred
-  sp_ix_raw, _ = sample_graph['SPY', 'same_time', sym].edge_index[:, ix]
-
-  sample_graph[sym].x_samp = torch.cat([sample_graph[sym].x_samp, sample_graph[sym].x_pred[:1]])
-  sample_graph[sym].x_pred = sample_graph[sym].x_pred[1:]
-
-  sp_edge_indices = sample_graph['SPY', 'next_in_sequence', 'SPY'].edge_index[1]
-  sp_ix = torch.where(sp_edge_indices == sp_ix_raw)[0].item()
-  sp_len = sp_ix - sample_graph['SPY'].x_samp.shape[1]
-  #print(len(sp_edge_indices), sp_ix_raw, sp_ix, sp_len)
-
-  sample_graph['SPY'].x_samp = torch.cat([sample_graph['SPY'].x_samp, sample_graph['SPY'].x_pred[:sp_len]])
-  sample_graph['SPY'].x_pred = sample_graph['SPY'].x_pred[sp_len:]
-
-  # Update edge_index
-  #
-
-  print("Time step... ")
-  return sample_graph, ix+1
-
-
-acc = Account()
-acc.test()
