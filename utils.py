@@ -1,7 +1,21 @@
 from torch_geometric.data import HeteroData
 import yfinance as yf
 import torch
+
+import numpy as np
 import datetime as dt
+import pandas as pd
+import yfinance as yf
+import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
+import seaborn as sns
+
+import torch.nn as nn
+from torch.nn import functional as F
+from torch.utils.data import DataLoader
+
+from torch_geometric.data import Data, Batch
+from torch_geometric.data import TemporalData, HeteroData
 
 
 
@@ -72,8 +86,65 @@ def link_graphs(sp_nodes, stock_nodes):
   return torch.stack([sp_indices, stock_indices], dim=0)
 
 
+
+def step(sample_graph, ix, sym):
+  """
+  Makes a time step through the sample_graph
+
+  Updates:
+    - x samp/pred
+    - edge_index samp/pred
+    - t samp/pred
+    - node_ids samp/pred
+  """
+  # Update x_samp and x_pred
+  sp_ix_raw, _ = sample_graph['SPY', 'same_time', sym].edge_index[:, ix]
+
+  sample_graph[sym].x_samp = torch.cat([sample_graph[sym].x_samp, sample_graph[sym].x_pred[:1]])
+  sample_graph[sym].x_pred = sample_graph[sym].x_pred[1:]
+
+  sp_edge_indices = sample_graph['SPY', 'next_in_sequence', 'SPY'].edge_index[1]
+  sp_ix = torch.where(sp_edge_indices == sp_ix_raw)[0].item()
+  sp_len = sp_ix - sample_graph['SPY'].x_samp.shape[1]
+  #print(len(sp_edge_indices), sp_ix_raw, sp_ix, sp_len)
+
+  sample_graph['SPY'].x_samp = torch.cat([sample_graph['SPY'].x_samp, sample_graph['SPY'].x_pred[:sp_len]])
+  sample_graph['SPY'].x_pred = sample_graph['SPY'].x_pred[sp_len:]
+
+  # Update edge_index
+  #
+
+  print("Time step... ")
+  return sample_graph, ix+1
+
+
+def normalize(x, curr_ix, pred_ix):
+  x_samp = x[:curr_ix]
+  last_close = float(x_samp[-1, 2]) # Scale by last Close price, buy price
+
+  x_samp /= last_close
+
+  x_pred = x[curr_ix:pred_ix+1]
+  x_pred /= last_close
+  return x_samp, x_pred, last_close
+
+
+def movement(x_pred, pct=0.03):
+    high = max(x_pred[0])
+    low = min(x_pred[1])
+
+    if high >= 1 + pct:
+        y = torch.tensor([1, 0, 0])  # above Pct return
+    elif low <= 1 - pct:
+        y = torch.tensor([0, 0, 1])  # below Pct return
+    else:
+        y = torch.tensor([0, 1, 0])  # within Pct return
+
+    return y
+
+
 #######################################################################
-def sample(graph, sym, sample_len, pred_len, live=False):
+def sample(graph, sym, sample_len, pred_len, live):
   sample_graph = HeteroData()
 
   # random stock sample index
@@ -126,8 +197,22 @@ def sample(graph, sym, sample_len, pred_len, live=False):
   del sample_graph[sym].x
   del sample_graph['SPY'].x
 
-  return sample_graph, len(sample_graph[sym].x_samp)
+  if live:
+      return sample_graph, s_ix
+  else:
+      return sample_graph, len(sample_graph[sym].x_samp)
 #######################################################################
+
+
+def same_time_ix(same_time, dicts):
+  edge_ix = torch.zeros_like(same_time) # same shape
+
+  for i in range(same_time.shape[1]-1): ###
+    edge_ix[0, i] = dicts[0][same_time[0, i].item()] # spy dict
+    edge_ix[1, i] = dicts[1][same_time[1, i].item()] # sym dict
+
+  #print(dicts, edge_ix)
+  return edge_ix
 
 
 def make_dicts(edge_sets):
@@ -151,69 +236,13 @@ def make_dicts(edge_sets):
   return dicts, edge_ixs # spy, sym
 
 
-def same_time_ix(same_time, dicts):
-  edge_ix = torch.zeros_like(same_time) # same shape
 
-  for i in range(same_time.shape[1]):
-    edge_ix[0, i] = dicts[0][same_time[0, i].item()] # spy dict
-    edge_ix[1, i] = dicts[1][same_time[1, i].item()] # sym dict
-
-  return edge_ix
+# acc = Account()
+# acc.test()
 
 
-def step(sample_graph, ix, sym):
-  sp_ix_raw, _ = sample_graph['SPY', 'same_time', sym][:, ix]
-
-  sample_graph[sym].x_samp = torch.cat([sample_graph[sym].x_samp, sample_graph[sym].x_pred[:1]])
-  sample_graph[sym].x_pred = sample_graph[sym].x_pred[1:]
-
-  sp_edge_indices = sample_graph['SPY', 'next_in_sequence', 'SPY'].edge_index[1]
-  sp_ix = torch.where(sp_edge_indices == sp_ix_raw)[0].item()
-  print(len(sp_edge_indices), sp_ix_raw, sp_ix)
-
-  sample_graph['SPY'].x_samp = sample_graph['SPY'].x[:sp_ix]
-  sample_graph['SPY'].x_pred = sample_graph['SPY'].x[sp_ix:]
-
-  return ix+1
-
-
-def normalize(x, curr_ix, pred_ix):
-  x_samp = x[:curr_ix]
-  last_close = float(x_samp[-1, 2]) # Scale by last Close price, buy price
-
-  x_samp /= last_close
-
-  x_pred = x[curr_ix:pred_ix+1]
-  x_pred /= last_close
-  return x_samp, x_pred, last_close 
-
-
-def movement(x_pred, pct=0.03):
-    high = max(x_pred[0])
-    low = min(x_pred[1])
-
-    if high >= 1 + pct:
-        y = torch.tensor([1, 0, 0])  # above Pct return
-    elif low <= 1 - pct:
-        y = torch.tensor([0, 0, 1])  # below Pct return
-    else:
-        y = torch.tensor([0, 1, 0])  # within Pct return
-
-    return y
-
-
-
-def get_symbols(symbols):
-    # symbol
-    # stock graph
-    # sample batches
-    pass    
-
-
-def download():
-    # Downloads symbol data
-    pass
-
-def process():
-    # Reads downloaded data
-    pass
+# sym = 'TCRX'
+# graph = build_graph(['AMZN', 'MSFT', 'TCRX'])
+# sample_graph, ix = sample(graph, sym)
+# print(graph.metadata())
+# sample_graph
