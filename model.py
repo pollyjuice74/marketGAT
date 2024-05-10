@@ -1,28 +1,19 @@
-# Suppose 
+from torch_geometric.nn.conv import GATv2Conv#, HGTConv
+from torch_geometric.nn import Linear
+from torch_geometric.nn import to_hetero
+import math
+from typing import Dict, List, Optional, Tuple, Union
+
 import torch
-import torch.nn.functional as F
-import torch.nn as nn
-import time
-
-import torch_geometric
-from torch_geometric.nn.conv import GATv2Conv
-from torch_geometric.nn import TransformerConv, LSTMAggregation
-from torch_geometric.utils import to_dense_batch, sort_edge_index
-
-from utils import *
+from torch import Tensor
+from torch.nn import Parameter
 
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.dense import HeteroDictLinear, HeteroLinear
 from torch_geometric.nn.inits import ones
 from torch_geometric.nn.parameter_dict import ParameterDict
-from torch_geometric.typing import Adj, EdgeType, Metadata, NodeType
-from torch_geometric.utils import softmax
-from torch_geometric.utils.hetero import construct_bipartite_edge_index
-
-
-hidden_channels, num_classes = 0,3
-in_channels, out_channels = 0, 0
-
+from torch_geometric.typing import Adj, EdgeType, Metadata, NodeType, SparseTensor, Size, Any
+from torch_geometric.utils import softmax, is_sparse
 
 
 def construct_bipartite_edge_index(
@@ -53,7 +44,7 @@ def construct_bipartite_edge_index(
         edge_index[1] += dst_offset
         edge_indices.append(edge_index)
 
-        if edge_attr_dict is not None:
+        if edge_attr_dict != None:
             if isinstance(edge_attr_dict, ParameterDict):
                 value = edge_attr_dict['__'.join(edge_type)]
             else:
@@ -65,7 +56,7 @@ def construct_bipartite_edge_index(
     edge_index = torch.cat(edge_indices, dim=1)
 
     edge_attr: Optional[Tensor] = None
-    if edge_attr_dict is not None:
+    if edge_attr_dict != None:
         edge_attr = torch.cat(edge_attrs, dim=0)
 
     if is_sparse_tensor:
@@ -196,9 +187,7 @@ class HGTConv(MessagePassing):
         v = self.v_rel(vs, type_vec).view(H, -1, D).transpose(0, 1)
 
         return k, v, offset
-    
 
-###############################################################################################
     def propagate(
       self,
       edge_index: Adj,
@@ -208,9 +197,10 @@ class HGTConv(MessagePassing):
 
       decomposed_layers = 1 if self.explain else self.decomposed_layers
 
+      print(self._propagate_forward_pre_hooks.values())
       for hook in self._propagate_forward_pre_hooks.values():
           res = hook(self, (edge_index, size, kwargs))
-          if res is not None:
+          if res != None:
               edge_index, size, kwargs = res
 
       mutable_size = self._check_input(edge_index, size)
@@ -234,12 +224,12 @@ class HGTConv(MessagePassing):
               'message_and_aggregate', coll_dict)
           for hook in self._message_and_aggregate_forward_pre_hooks.values():
               res = hook(self, (edge_index, msg_aggr_kwargs))
-              if res is not None:
+              if res != None:
                   edge_index, msg_aggr_kwargs = res
           out = self.message_and_aggregate(edge_index, **msg_aggr_kwargs)
           for hook in self._message_and_aggregate_forward_hooks.values():
               res = hook(self, (edge_index, msg_aggr_kwargs), out)
-              if res is not None:
+              if res != None:
                   out = res
 
           update_kwargs = self.inspector.collect_param_data(
@@ -261,19 +251,19 @@ class HGTConv(MessagePassing):
                   for arg in decomp_args:
                       kwargs[arg] = decomp_kwargs[arg][i]
 
-              coll_dict = self._collect(self._user_args, edge_index, ######## ERROR
+              coll_dict = self._collect(self._user_args, edge_index,
                                         mutable_size, kwargs)
 
               msg_kwargs = self.inspector.collect_param_data(
                   'message', coll_dict)
               for hook in self._message_forward_pre_hooks.values():
                   res = hook(self, (msg_kwargs, ))
-                  if res is not None:
+                  if res != None:
                       msg_kwargs = res[0] if isinstance(res, tuple) else res
               out = self.message(**msg_kwargs)
               for hook in self._message_forward_hooks.values():
                   res = hook(self, (msg_kwargs, ), out)
-                  if res is not None:
+                  if res != None:
                       out = res
 
               if self.explain:
@@ -285,14 +275,14 @@ class HGTConv(MessagePassing):
                   'aggregate', coll_dict)
               for hook in self._aggregate_forward_pre_hooks.values():
                   res = hook(self, (aggr_kwargs, ))
-                  if res is not None:
+                  if res != None:
                       aggr_kwargs = res[0] if isinstance(res, tuple) else res
 
               out = self.aggregate(out, **aggr_kwargs)
 
               for hook in self._aggregate_forward_hooks.values():
                   res = hook(self, (aggr_kwargs, ), out)
-                  if res is not None:
+                  if res != None:
                       out = res
 
               update_kwargs = self.inspector.collect_param_data(
@@ -307,13 +297,12 @@ class HGTConv(MessagePassing):
 
       for hook in self._propagate_forward_hooks.values():
           res = hook(self, (edge_index, mutable_size, kwargs), out)
-          if res is not None:
+          if res != None:
               out = res
 
       return out
 
 
-############################################################################################
     def forward(
         self,
         x_dict: Dict[NodeType, Tensor],
@@ -345,7 +334,7 @@ class HGTConv(MessagePassing):
             edge_index_dict, src_offset, dst_offset, edge_attr_dict=self.p_rel,
             num_nodes=k.size(0))
 
-        print(edge_index.shape, edge_index_used.shape)
+        print(edge_index.shape, edge_index_used.shape, edge_attr)
         out = self.propagate(edge_index_used, k=k, q=q, v=v, edge_attr=edge_attr)
 
         #print(edge_index.shape, k.permute(2, 1, 0).shape, q.permute(0, 2, 1).shape, v.permute(2, 1, 0).shape, k.size(2))
@@ -359,7 +348,7 @@ class HGTConv(MessagePassing):
         # Transform output node embeddings:
         a_dict = self.out_lin({
             k:
-            torch.nn.functional.gelu(v) if v is not None else v
+            torch.nn.functional.gelu(v) if v != None else v
             for k, v in out_dict.items()
         })
 
@@ -373,7 +362,6 @@ class HGTConv(MessagePassing):
             out_dict[node_type] = out
 
         return out_dict
-############################################################################################
 
 
     def message(self, k_j: Tensor, q_i: Tensor, v_j: Tensor, edge_attr: Tensor,
@@ -430,4 +418,3 @@ class HGT(torch.nn.Module):
             x_dict = conv(x_dict, edge_index_dict)
 
         return self.classifier(x_dict)
-
