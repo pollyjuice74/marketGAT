@@ -26,3 +26,8 @@ The `Account` is trying to predict weather given the 30 day history data how lik
 Later on I would like to create a Portfolio model that could optimize the portions and risks to be better able to identify a good stock and if so invest in it accordingly. 
 
 
+## Resources
+
+- Four Models of Competiiton
+
+https://journals.sagepub.com/doi/pdf/10.1177/0256090919940101 
