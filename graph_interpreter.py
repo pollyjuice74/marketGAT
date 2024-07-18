@@ -8,9 +8,9 @@
 # it can be represented as a Markov Noising Proceess: q(x_t0) = f(x_t0) + N
 # as the stock s progresses thorugh time t at the current price p
 
-# get the x_hat and z_hat estimate of the direction function x and the noise z is separated 
+# get the x_hat and z_hat estimate of the direction function x and the noise z, it is separated 
 # from each of the stocks, all stocks can be cross analyzed and compared to eachother
-# based on their extracted x_hat and z_hat to create a general trend curve or vector
+# based on their extracted x_hat, and z_hat to create a general market multidim vector 
 # of how a stock's x value is pointing in multidimensional space, each stock can have
 # this representation, noise extreacted z could be cumulated and used to calculate
 # how the market affects the price fluctuation of the individual stock.
