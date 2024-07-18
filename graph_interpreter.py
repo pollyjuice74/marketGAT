@@ -5,7 +5,7 @@
 # looks like (s,p) representing the normalized graph of prices of a stock s at a given
 # interval of time [0,...,T].
 
-# it can be represented as a Markov Noising Proceess: q(x_t1) = f(x_t0) + N
+# it can be represented as a Markov Noising Proceess: q(x_t0) = f(x_t0) + N
 # as the stock s progresses thorugh time t at the current price p
 
 # get the x_hat and z_hat estimate of the direction function x and the noise z is separated 
@@ -14,3 +14,7 @@
 # of how a stock's x value is pointing in multidimensional space, each stock can have
 # this representation, noise extreacted z could be cumulated and used to calculate
 # how the market affects the price fluctuation of the individual stock.
+
+class MarketAverage
+
+class StockAttn
