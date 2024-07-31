@@ -6,6 +6,10 @@ This repo is implementing a Graph Neural Network using PyTorch Geometric to pred
 
 - Connect it to a live trading account
 
+- Design neural network to process the graph data 
+
+- 
+
 ---
 
 ## Contents:
