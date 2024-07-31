@@ -2,13 +2,13 @@
 This repo is implementing a Graph Neural Network using PyTorch Geometric to predict market activity in a short period of time. 
 
 ## TODO:
+- MAKE A LIVE TRADING VIEW TRADER
+
 - Make weighted version of the trailing stoploss algorithm doing an informed decision based on it's previous knowledge and the 3 month data of the `stock_i` from the `stocks` set.
 
 - Connect it to a live trading account
 
 - Design neural network to process the graph data 
-
-- 
 
 ---
 
