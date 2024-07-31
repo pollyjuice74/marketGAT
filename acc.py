@@ -14,10 +14,10 @@ from utils import *
 
 
 class Account:
-    def __init__(self, hidden_channels=7*30, epochs=2000, learning_rate=1e-05, live=True):
+    def __init__(self, balance=416.29, hidden_channels=7*30, epochs=2000, learning_rate=1e-05, live=True):
         # Account info
         self.history = list() # Tape of transaction history
-        self.net_value = 416.29
+        self.net_value = balance
         self.portions = None # [1, 8]
         self.used = None # [1, 8]
         self.bets = 2 # Limited ammount of bets per day
