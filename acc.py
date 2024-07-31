@@ -6,13 +6,11 @@ import time
 import random
 import yfinance as yf
 
-
 from torch_geometric.data import Data, Batch
 from torch_geometric.data import TemporalData, HeteroData
 
 from model import *
 from utils import *
-
 
 
 class Account:
@@ -38,7 +36,6 @@ class Account:
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=learning_rate)
         self.criterion = nn.BCEWithLogitsLoss()
         ##################################################
-
 
     def get_portion(self):
         """
@@ -68,7 +65,6 @@ class Account:
         self.used[ix] = 1 # mark used vector
 
         return amount, ix
-
 
     def buy(self, sym, amount, ix):
         """
@@ -102,7 +98,6 @@ class Account:
         print("BUYING: ", sym, " for ", shares*price, " with ", left_over, " left over.")
         self.portions[ix] += left_over
 
-
     def sell(self, sym):
         """
         Sells all stock portions of a given symbol at the current stock price
@@ -126,16 +121,13 @@ class Account:
 
         self.current_bets[sym] = list() # remove bet
 
-
     def wait(self):
         """ Wait some time before continuing """
         time.sleep(10)
 
-
     def buy_conditions(self, pred):
         """ Test if preditction is for upward movement """
         return torch.equal(pred, torch.tensor([1,0,0]))
-
 
     def train(self):
         """
@@ -168,7 +160,6 @@ class Account:
 
                 self.print(i, epoch_loss, freq=25)
 
-
     def rank(self, ):
         """
         Ranks stock symbols by most to least profitable given a x day interval.
@@ -178,12 +169,10 @@ class Account:
         """
         pass
 
-
     def print(self, i, epoch_loss, freq=25):
         """ Prints epoch and loss data """
         if i % freq == 0:
             print(f"Epoch: {i+1}/{self.epochs}, Loss: {epoch_loss}")
-
 
     def test(self): # Live trading simulation
         """
@@ -251,7 +240,6 @@ class Account:
 
           self.print_acc()
 
-
     def print_acc(self):
         """ Print info for the account """
 
@@ -281,7 +269,6 @@ class Account:
                 { {sym: stock.price.item() for sym, stock in self.stocks.items() if stock is not None} }
                 """
         )
-
 
     def update_graph(self): ###
         """
@@ -315,7 +302,6 @@ class Account:
 
               stock.update()
 
-
     def pull_back(self, sym, pull=0.02):
         """
         Implements pull-back trading where you trail the price
@@ -347,7 +333,6 @@ class Account:
         return False
 
 
-
 class Stock:
     def __init__(self, sym, live, graph):
         # Metadata
@@ -364,7 +349,6 @@ class Stock:
 
         self.initialize_graph(graph)
         ########################
-
 
     def update(self):
         """
