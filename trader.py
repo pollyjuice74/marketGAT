@@ -12,7 +12,7 @@ class LIVETrader(Account):
     def live_price(self, sym):
         return price
 
-    def live_balance(self)
+    def live_balance(self):
         return balance
 
     def execute_buy(self, sym):
