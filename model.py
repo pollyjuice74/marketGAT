@@ -36,6 +36,11 @@ def tran_call(self, r_t, t):
         return z_hat, synd
 
 
+def tran_call(self, graph):
+    # (s, p)->(s, p/m + f/v, k+u, d)->(s, k+u)->(s, u)->(s,1)->(1,)  
+    emb_symbols = [ emb_sym(sym_graph.x) for sym_graph in graph ] 
+                
+
     def create_mask(self, H):
         m,n = H.shape
         mask = tf.eye(n+m, dtype=tf.float32) # (n+m, n+m)
