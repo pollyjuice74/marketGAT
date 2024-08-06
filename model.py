@@ -1,3 +1,12 @@
+class MarketNN(nn.Module):
+        def __init__(self):
+                self.mask = mask
+                
+        def tran_call(self, graph):
+            # (s, p)->(s, p/m + f/v, k+u, d)->(s, k+u)->(s, u)->(s,1)->(1,)  
+            emb_symbols = [ emb_sym(sym_graph.x) for sym_graph in graph ] 
+
+
 def tran_call(self, r_t, t):
         # Make sure r_t and t are compatible
         r_t = tf.reshape(r_t, (self.n, -1)) # (n,b)
@@ -36,25 +45,20 @@ def tran_call(self, r_t, t):
         return z_hat, synd
 
 
-def tran_call(self, graph):
-    # (s, p)->(s, p/m + f/v, k+u, d)->(s, k+u)->(s, u)->(s,1)->(1,)  
-    emb_symbols = [ emb_sym(sym_graph.x) for sym_graph in graph ] 
-                
-
-    def create_mask(self, H):
+def create_mask(self, H):
         m,n = H.shape
         mask = tf.eye(n+m, dtype=tf.float32) # (n+m, n+m)
         cn_con, vn_con, _ = sp.sparse.find(H)
-
+        
         for cn, vn_i in zip(cn_con, vn_con):
             # cn to vn connections in the mask
             mask = tf.tensor_scatter_nd_update(mask, [[n+cn, vn_i],[vn_i, n+cn]], [1.0,1.0])
-
+        
             # distance 2 vn neighbors of vn_i
             related_vns = vn_con[cn_con==cn]
             for vn_j in related_vns:
                 mask = tf.tensor_scatter_nd_update(mask, [[vn_i, vn_j],[vn_j, vn_i]], [1.0,1.0])
-
+        
         # -infinity where mask is not set
         mask = tf.cast( tf.math.logical_not(mask > 0), dtype=tf.float32) # not(mask > 0) for setting non connections to -1e9
         return mask
