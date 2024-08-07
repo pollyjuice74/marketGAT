@@ -1,9 +1,9 @@
 import torch
-from torch.nn import TransformerEncoder, TransformerEncoderLayer, ModuleList, MultiheadAttention, Linear, Dropout
+from torch.nn import Module, TransformerEncoder, TransformerEncoderLayer, ModuleList, MultiheadAttention, Linear, Dropout
 from torch_geometric.nn import GATv2Conv
 
 
-class MarketTranformer(nn.Module):
+class MarketTranformer(Module):
         def __init__(self, metadata, hidden_dims=4*16, num_classes=3, num_heads=8, num_layers=2):
                 super().__init__()
                 self.embedding = torch.nn.Linear(4, hidden_dims) # learned h,l,o,c representations
