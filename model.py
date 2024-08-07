@@ -1,18 +1,17 @@
 import torch
 from torch.nn import Module, TransformerEncoder, TransformerEncoderLayer, ModuleList, MultiheadAttention, Linear, Dropout
-from torch_geometric.nn import GATv2Conv
+from torch_geometric.nn import GATv2Conv, to_hetero
 
 
-class MarketTranformer(Module):
+class MarketTransformer(Module):
         def __init__(self, metadata, hidden_dims=4*16, num_classes=3, num_heads=8, num_layers=2):
                 super().__init__()
+                assert  hidden_dims % num_heads == 0, "Hidden dims and num_heads don't match"
                 self.embedding = torch.nn.Linear(4, hidden_dims) # learned h,l,o,c representations
-                self.pos_encoder = PositionalEncoding(hidden_dim) # retain temporal order info
+                self.pos_encoder = PositionalEncoder(hidden_dims) # retain temporal order info
                 self.self_attn = MultiheadAttention(hidden_dims, num_heads) # each stock will attend to itself       
 
-                self.gat_conv = ModuleList() # utilize graph structure of the data
-                for _ in range(num_layers):
-                        self.gat_layers.append( GATv2Conv(hidden_dims, hidden_dims//num_heads, heads=num_heads) )
+                self.gat_convs = GATModule(hidden_dims, num_heads, num_layers)
 
                 # for capturing relations between different stocks over time
                 encoder_layers = TransformerEncoderLayer(d_model=hidden_dims, nhead=num_heads)
@@ -24,7 +23,7 @@ class MarketTranformer(Module):
                 self.time_prediction = Linear(hidden_dims, 1)
 
                 # turn homogeneous gnn into hetero gnn
-                self.to_hetero(self.gat_layers, metadata, aggr="sum")
+                self.gat_convs = to_hetero(self.gat_convs, metadata, aggr="sum")
                                                  
         def forward(self, x_dict, edge_index_dict):
                 for key, x in x_dict.items():
@@ -32,7 +31,7 @@ class MarketTranformer(Module):
                         x = self.pos_encoder(x)
                         x_dict[key], _ = self.self_attn(x,x,x)
 
-                for conv in self.gat_conv:
+                for conv in self.gat_convs:
                         x_dict = conv(x_dict, edge_index_dict)
 
                 x, mask = self._to_transformer_input(x_dict)
@@ -59,6 +58,20 @@ class MarketTranformer(Module):
 
         def select_top_stocks():
                 pass
+
+
+class GATModule(Module):
+        def __init__(self, hidden_dims, num_heads, num_layers):
+                super().__init__()
+                self.gat_convs = ModuleList() # utilize graph structure of the data
+                for _ in range(num_layers):
+                        self.gat_convs.append( GATv2Conv(hidden_dims, hidden_dims//num_heads, heads=num_heads, add_self_loops=False) )
+                        
+        def forward(self, x_dict, edge_index_dict):
+                for conv in self.gat_convs:
+                        x_dict = conv(x_dict, edge_index_dict)
+                return x_dict
+
 
 class PositionalEncoder(Module):
         def __init__(self, d_model, max_len=5000):
