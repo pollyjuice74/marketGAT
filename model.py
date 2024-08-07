@@ -42,6 +42,7 @@ class MarketTranformer(nn.Module):
                 return out_dict
 
         def _to_transformer_input(self, x_dict):
+                ### TODO
                 all_x, mask = [], []
                 return x, mask
                 
