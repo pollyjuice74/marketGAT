@@ -162,9 +162,9 @@ def sample(graph, sym, sample_len, pred_len, live):
   last_nodeID = graph[sym].node_ids[curr_ix + pred_len]
 
   # spy nodes ixs
-  f_sp_ix = torch.where(graph['SPY'].node_ids == first_nodeID.item())[0]
-  c_sp_ix = torch.where(graph['SPY'].node_ids == curr_nodeID.item())[0]
-  l_sp_ix = torch.where(graph['SPY'].node_ids == last_nodeID.item())[0]
+  f_sp_ix = torch.where(graph['SPY'].node_ids == first_nodeID.item())[0] # First
+  c_sp_ix = torch.where(graph['SPY'].node_ids == curr_nodeID.item())[0] # Current
+  l_sp_ix = torch.where(graph['SPY'].node_ids == last_nodeID.item())[0] # Last
 
   # spy graph
   sample_graph['SPY'].x = graph['SPY'].x[f_sp_ix:l_sp_ix]
