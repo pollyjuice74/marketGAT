@@ -17,8 +17,11 @@ class MarketTranformer(nn.Module):
                 # for capturing relations between different stocks over time
                 encoder_layers = TransformerEncoderLayer(d_model=hidden_dims, nhead=num_heads)
                 self.transformer_encoder = TransformerEncoder(encoder_layers, num_layers=num_layers)
+                
                 # one-hot prediciton of stock's movement
                 self.classifier = Linear(hidden_dims, num_classes) 
+                # time ix prediction of when the stock will reach pos. returns
+                self.time_prediction = Linear(hidden_dims, 1)
 
                 # turn homogeneous gnn into hetero gnn
                 self.to_hetero(self.gat_layers, metadata, aggr="sum")
@@ -35,9 +38,10 @@ class MarketTranformer(nn.Module):
                 x, mask = self._to_transformer_input(x_dict)
                 x = self.transformer_encoder(x, mask)
 
-                out_dict = dict()
+                class_out_dict, time_out_dict = dict(), dict()
                 for key in x_dict.keys():
-                        out_dict[key] = self.classifier(x)
+                        class_out_dict[key] = self.classifier(x)
+                        time_out_dict[key] = self.time_prediction(x)
 
                 return out_dict
 
@@ -45,7 +49,16 @@ class MarketTranformer(nn.Module):
                 ### TODO
                 all_x, mask = [], []
                 return x, mask
-                
+
+        def compute_utility(class_out_dict, time_out_dict):
+                utility_dict = dict()
+                for key in class_out_dict.keys():
+                        P_return = torch.softmax(class_out_dict[key])
+                        utility_dict[key] = P_return / time_out_dict[key]
+                return utility_dict
+
+        def select_top_stocks():
+                pass
 
 class PositionalEncoder(nn.Module):
         def __init__(self, d_model, max_len=5000):
