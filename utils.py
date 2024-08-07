@@ -18,8 +18,34 @@ from torch_geometric.data import Data, Batch
 from torch_geometric.data import TemporalData, HeteroData
 
 
+def build_graph(stock_symbols, startDate, endDate):
+  graph = HeteroData()
+  sp = sym_graph('SPY', startDate, endDate)
+  stock_graphs = [sym_graph(sym, startDate, endDate) for sym in stock_symbols]
 
-def sym_graph(symbol, interval='1h'):
+  # Add stock graphs to graph
+  for s_graph in stock_graphs:
+    graph[s_graph.sym].x = s_graph[s_graph.sym].x
+    graph[s_graph.sym].t = s_graph[s_graph.sym].t
+    graph[s_graph.sym].node_ids = s_graph[s_graph.sym].node_ids
+    graph[s_graph.sym, 'next_in_sequence', s_graph.sym].edge_index = s_graph[s_graph.sym, 'next_in_sequence', s_graph.sym].edge_index
+
+  # Add SPY stock graph
+  graph[sp.sym].x = sp[sp.sym].x
+  graph[sp.sym].t = sp[sp.sym].t
+  graph[sp.sym].node_ids = sp[sp.sym].node_ids
+  graph[sp.sym, 'next_in_sequence', sp.sym].edge_index = sp[sp.sym, 'next_in_sequence', sp.sym].edge_index
+
+  # Link all symbol nodes to SPY nodes at the 'same_time' t
+  sp_nodes = graph[sp.sym].node_ids
+  for sym in stock_symbols:
+    stock_nodes = graph[sym].node_ids
+    graph[sp.sym, 'same_time', sym].edge_index = link_graphs(sp_nodes, stock_nodes)
+
+  return graph
+  
+
+def sym_graph(symbol, startDate, endDate, interval='1h'):
   graph = HeteroData()
   df = yf.download(symbol, start=startDate, end=endDate, interval=interval)
 
@@ -41,33 +67,6 @@ def sym_graph(symbol, interval='1h'):
   src = torch.arange(0, num_nodes - 1, dtype=torch.long)  # Indices from 0 to N-2
   dst = torch.arange(1, num_nodes, dtype=torch.long)
   graph[symbol, 'next_in_sequence', symbol].edge_index = torch.stack([src, dst], dim=0)
-
-  return graph
-
-
-def build_graph(stock_symbols):
-  graph = HeteroData()
-  sp = sym_graph('SPY')
-  stock_graphs = [sym_graph(sym) for sym in stock_symbols]
-
-  # Add stock graphs to graph
-  for s_graph in stock_graphs:
-    graph[s_graph.sym].x = s_graph[s_graph.sym].x
-    graph[s_graph.sym].t = s_graph[s_graph.sym].t
-    graph[s_graph.sym].node_ids = s_graph[s_graph.sym].node_ids
-    graph[s_graph.sym, 'next_in_sequence', s_graph.sym].edge_index = s_graph[s_graph.sym, 'next_in_sequence', s_graph.sym].edge_index
-
-  # Add SPY stock graph
-  graph[sp.sym].x = sp[sp.sym].x
-  graph[sp.sym].t = sp[sp.sym].t
-  graph[sp.sym].node_ids = sp[sp.sym].node_ids
-  graph[sp.sym, 'next_in_sequence', sp.sym].edge_index = sp[sp.sym, 'next_in_sequence', sp.sym].edge_index
-
-  # Link all symbol nodes to SPY nodes at the 'same_time' t
-  sp_nodes = graph[sp.sym].node_ids
-  for sym in stock_symbols:
-    stock_nodes = graph[sym].node_ids
-    graph[sp.sym, 'same_time', sym].edge_index = link_graphs(sp_nodes, stock_nodes)
 
   return graph
 
