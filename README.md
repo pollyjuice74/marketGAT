@@ -42,3 +42,12 @@ Later on I would like to create a Portfolio model that could optimize the portio
 - Four Models of Competiiton
 
 https://journals.sagepub.com/doi/pdf/10.1177/0256090919940101 
+
+
+-  Market-Guided Stock Transformer for Stock Price Forecasting
+
+https://ar5iv.labs.arxiv.org/html/2312.15235
+
+- Transformer-based deep learning model for stock return forecasting
+
+https://www.utupub.fi/bitstream/handle/10024/154307/Paivarinta_Markus_ProGradu.pdf?sequence=1#:~:text=URL%3A%20https%3A%2F%2Fwww.utupub.fi%2Fbitstream%2Fhandle%2F10024%2F154307%2FPaivarinta_Markus_ProGradu.pdf%3Fsequence%3D1%0AVisible%3A%200%25%20
