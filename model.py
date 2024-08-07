@@ -60,7 +60,7 @@ class MarketTranformer(Module):
         def select_top_stocks():
                 pass
 
-class PositionalEncoder(nn.Module):
+class PositionalEncoder(Module):
         def __init__(self, d_model, max_len=5000):
                 super().__init__()
                 pe = torch.zeros(max_len, d_model)
