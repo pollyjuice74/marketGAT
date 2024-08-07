@@ -8,7 +8,7 @@ class MarketTranformer(nn.Module):
                 super().__init__()
                 self.embedding = torch.nn.Linear(4, hidden_dims) # learned h,l,o,c representations
                 self.pos_encoder = PositionalEncoding(hidden_dim) # retain temporal order info
-                self.self_attn = MultiheadAttention(hidden_dims, num_heads)        
+                self.self_attn = MultiheadAttention(hidden_dims, num_heads) # each stock will attend to itself       
 
                 self.gat_conv = ModuleList() # utilize graph structure of the data
                 for _ in range(num_layers):
