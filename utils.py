@@ -167,44 +167,43 @@ def sample(graph, symbols, sample_len, pred_len, live):
             spy_edges = graph['SPY', 'next_in_sequence', 'SPY'].edge_index[:, spy_ix:curr_ix + pred_len] ###
 
             for sym in symbols:
-              if sym == 'SPY':
-                continue
+                if sym == 'SPY':
+                  continue
 
-              # stock nodes ixs
-              f_sym_ix = torch.where(graph[sym].node_ids == first_nodeID.item())[0] # First
-              c_sym_ix = torch.where(graph[sym].node_ids == curr_nodeID.item())[0] # Current
-              l_sym_ix = torch.where(graph[sym].node_ids == last_nodeID.item())[0] # Last
+                # stock nodes ixs
+                f_sym_ix = torch.where(graph[sym].node_ids == first_nodeID.item())[0] # First
+                c_sym_ix = torch.where(graph[sym].node_ids == curr_nodeID.item())[0] # Current
+                l_sym_ix = torch.where(graph[sym].node_ids == last_nodeID.item())[0] # Last
 
-              # print(f_sym_ix)
-              # stock graph
-              sample_graph[sym].x = torch.cat([graph[sym].x[f_sym_ix:l_sym_ix],
-                                              graph[sym].t[f_sym_ix:l_sym_ix]], dim=1)
-              sample_graph[sym].node_ids = graph[sym].node_ids[f_sym_ix:l_sym_ix]
+                # stock graph
+                sample_graph[sym].x = torch.cat([graph[sym].x[f_sym_ix:l_sym_ix],
+                                                graph[sym].t[f_sym_ix:l_sym_ix]], dim=1)
+                sample_graph[sym].node_ids = graph[sym].node_ids[f_sym_ix:l_sym_ix]
 
-              # stock edges
-              sym_edges = graph[sym, 'next_in_sequence', sym].edge_index[:, f_sym_ix:l_sym_ix] ###
-              same_time_edges =  graph['SPY', 'same_time', sym].edge_index[:, f_sym_ix:l_sym_ix -1] ###
+                # stock edges
+                sym_edges = graph[sym, 'next_in_sequence', sym].edge_index[:, f_sym_ix:l_sym_ix] ###
+                same_time_edges =  graph['SPY', 'same_time', sym].edge_index[:, f_sym_ix:l_sym_ix -1] ###
 
-              dicts, edge_ixs = make_dicts([spy_edges, sym_edges]) # spy, sym
-              same_time_edges = same_time_ix(same_time_edges, dicts) # convert same time ixs from graph ixs to sample graph ixs
-              # print(same_time_edges)
+                dicts, edge_ixs = make_dicts([spy_edges, sym_edges]) # spy, sym
+                same_time_edges = same_time_ix(same_time_edges, dicts) # convert same time ixs from graph ixs to sample graph ixs
+                # print(same_time_edges)
 
-              # set edges 
-              sample_graph[sym, 'next_in_sequence', sym].edge_index = edge_ixs[1]
-              sample_graph['SPY', 'same_time', sym].edge_index = same_time_edges
+                # set edges 
+                sample_graph[sym, 'next_in_sequence', sym].edge_index = edge_ixs[1]
+                sample_graph['SPY', 'same_time', sym].edge_index = same_time_edges
 
-              # normalize stock data and split into sample and pred
-              sample_graph[sym].x_samp, sample_graph[sym].x_pred, buy_price = normalize(sample_graph[sym].x, curr_ix=c_sym_ix - f_sym_ix, pred_ix=l_sym_ix - f_sym_ix) # shifts ixs by first stock ix
-            
-              sample_graph.buy_price = buy_price
-
-              # split edges into sample and pred
-              sample_graph[sym, 'next_in_sequence', sym].edge_index_samp = sample_graph[sym, 'next_in_sequence', sym].edge_index[:, :c_sym_ix - f_sym_ix]
-              sample_graph[sym, 'next_in_sequence', sym].edge_index_pred = sample_graph[sym, 'next_in_sequence', sym].edge_index[:, c_sym_ix - f_sym_ix:l_sym_ix - f_sym_ix+1]
+                # normalize stock data and split into sample and pred
+                sample_graph[sym].x_samp, sample_graph[sym].x_pred, buy_price = normalize(sample_graph[sym].x, curr_ix=c_sym_ix - f_sym_ix, pred_ix=l_sym_ix - f_sym_ix) # shifts ixs by first stock ix
               
-              sample_graph['SPY', 'same_time', sym].edge_index_samp = sample_graph['SPY', 'same_time', sym].edge_index[:, :c_sym_ix - f_sym_ix]
-              sample_graph['SPY', 'same_time', sym].edge_index_pred = sample_graph['SPY', 'same_time', sym].edge_index[:, c_sym_ix - f_sym_ix:l_sym_ix - f_sym_ix+1]
-              # print(sample_graph[sym, 'next_in_sequence', sym].edge_index_samp)
+                sample_graph.buy_price = buy_price
+
+                # split edges into sample and pred
+                sample_graph[sym, 'next_in_sequence', sym].edge_index_samp = sample_graph[sym, 'next_in_sequence', sym].edge_index[:, :c_sym_ix - f_sym_ix]
+                sample_graph[sym, 'next_in_sequence', sym].edge_index_pred = sample_graph[sym, 'next_in_sequence', sym].edge_index[:, c_sym_ix - f_sym_ix:l_sym_ix - f_sym_ix+1]
+                
+                sample_graph['SPY', 'same_time', sym].edge_index_samp = sample_graph['SPY', 'same_time', sym].edge_index[:, :c_sym_ix - f_sym_ix]
+                sample_graph['SPY', 'same_time', sym].edge_index_pred = sample_graph['SPY', 'same_time', sym].edge_index[:, c_sym_ix - f_sym_ix:l_sym_ix - f_sym_ix+1]
+                # print(sample_graph[sym, 'next_in_sequence', sym].edge_index_samp)
 
             # set SPY edges, normalize SPY data and split into sample and pred
             sample_graph['SPY', 'next_in_sequence', 'SPY'].edge_index = edge_ixs[0]
@@ -230,7 +229,8 @@ def sample(graph, symbols, sample_len, pred_len, live):
             if live:
                 return sample_graph, spy_ix
             else:
-                return sample_graph, len(sample_graph['SPY'].x_samp)
+                curr_ixs = {sym: len(sample_graph[sym].x_samp) for sym in symbols}
+                return sample_graph, curr_ixs
 
         except Exception as e:
             print(f"Retrying due to error: {e}")
