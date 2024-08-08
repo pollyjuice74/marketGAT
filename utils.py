@@ -86,35 +86,54 @@ def link_graphs(sp_nodes, stock_nodes):
 
 
 
-def step(sample_graph, ix, sym):
+def step(sample_graph, curr_ixs):
   """
   Makes a time step through the sample_graph
 
   Updates:
     - x samp/pred
     - edge_index samp/pred
-    - t samp/pred
-    - node_ids samp/pred
+    - node_ids 
   """
-  # Update x_samp and x_pred
-  sp_ix_raw, _ = sample_graph['SPY', 'same_time', sym].edge_index[:, ix]
+  # update SPY data
+  sample_graph['SPY'].x_samp = torch.cat([sample_graph['SPY'].x_samp, sample_graph['SPY'].x_pred[:1]])
+  sample_graph['SPY'].x_pred = sample_graph['SPY'].x_pred[1:]
 
-  sample_graph[sym].x_samp = torch.cat([sample_graph[sym].x_samp, sample_graph[sym].x_pred[:1]])
-  sample_graph[sym].x_pred = sample_graph[sym].x_pred[1:]
+  # update SPY next_in_sequence edges
+  sample_graph['SPY', 'next_in_sequence', 'SPY'].edge_index_samp = torch.cat([sample_graph['SPY', 'next_in_sequence', 'SPY'].edge_index_samp,
+                                                                              sample_graph['SPY', 'next_in_sequence', 'SPY'].edge_index_pred[:, :1]], dim=1)
+  sample_graph['SPY', 'next_in_sequence', 'SPY'].edge_index_pred = sample_graph['SPY', 'next_in_sequence', 'SPY'].edge_index_pred[:, 1:]
 
-  sp_edge_indices = sample_graph['SPY', 'next_in_sequence', 'SPY'].edge_index[1]
-  sp_ix = torch.where(sp_edge_indices == sp_ix_raw)[0].item()
-  sp_len = sp_ix - sample_graph['SPY'].x_samp.shape[1]
-  #print(len(sp_edge_indices), sp_ix_raw, sp_ix, sp_len)
+  # SPY current ix
+  spy_ix = curr_ixs['SPY'] 
 
-  sample_graph['SPY'].x_samp = torch.cat([sample_graph['SPY'].x_samp, sample_graph['SPY'].x_pred[:sp_len]])
-  sample_graph['SPY'].x_pred = sample_graph['SPY'].x_pred[sp_len:]
+  for sym, _ in curr_ixs.items():
+    if sym == 'SPY':
+      continue
 
-  # Update edge_index
-  #
+    # get corresponding SPY-stock same_time node ix if any
+    spy_pred_edges = sample_graph['SPY', 'same_time', sym].edge_index_pred[0]
+    sym_ix = torch.where(spy_pred_edges == spy_ix)[0].item() 
+
+    # update SPY-stock same_time edges
+    sample_graph['SPY', 'same_time', sym].edge_index_samp = torch.cat([sample_graph['SPY', 'same_time', sym].edge_index_samp, 
+                                                                       sample_graph['SPY', 'same_time', sym].edge_index_pred[:, :sym_ix]], dim=1)
+    sample_graph['SPY', 'same_time', sym].edge_index_pred = sample_graph['SPY', 'same_time', sym].edge_index_pred[:, sym_ix:]
+
+    # update stock next_in_sequence edges 
+    sample_graph[sym, 'next_in_sequence', sym].edge_index_samp = torch.cat([sample_graph[sym, 'next_in_sequence', sym].edge_index_samp,
+                                                                              sample_graph[sym, 'next_in_sequence', sym].edge_index_pred[:, :sym_ix]], dim=1)
+    sample_graph[sym, 'next_in_sequence', sym].edge_index_pred = sample_graph[sym, 'next_in_sequence', sym].edge_index_pred[:, sym_ix:]
+
+    # update stock data
+    sample_graph[sym].x_samp = torch.cat([sample_graph[sym].x_samp, sample_graph[sym].x_pred[:sym_ix]])
+    sample_graph[sym].x_pred = sample_graph[sym].x_pred[sym_ix:]
+
+  # update spy_ix
+  curr_ixs['SPY'] += 1
 
   print("Time step... ")
-  return sample_graph, ix+1
+  return sample_graph, curr_ixs
 
 
 def normalize(x, curr_ix, pred_ix):
