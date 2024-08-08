@@ -235,7 +235,6 @@ def sample(graph, symbols, sample_len, pred_len, live):
         except Exception as e:
             print(f"Retrying due to error: {e}")
             continue
-
 #######################################################################
 
 
