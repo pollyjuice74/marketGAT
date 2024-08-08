@@ -26,13 +26,13 @@ def build_graph(stock_symbols, startDate, endDate):
   # Add stock graphs to graph
   for s_graph in stock_graphs:
     graph[s_graph.sym].x = s_graph[s_graph.sym].x
-    graph[s_graph.sym].t = s_graph[s_graph.sym].t
+    graph[s_graph.sym].t = torch.tensor(s_graph[s_graph.sym].t)
     graph[s_graph.sym].node_ids = s_graph[s_graph.sym].node_ids
     graph[s_graph.sym, 'next_in_sequence', s_graph.sym].edge_index = s_graph[s_graph.sym, 'next_in_sequence', s_graph.sym].edge_index
 
   # Add SPY stock graph
   graph[sp.sym].x = sp[sp.sym].x
-  graph[sp.sym].t = sp[sp.sym].t
+  graph[sp.sym].t = torch.tensor(sp[sp.sym].t)
   graph[sp.sym].node_ids = sp[sp.sym].node_ids
   graph[sp.sym, 'next_in_sequence', sp.sym].edge_index = sp[sp.sym, 'next_in_sequence', sp.sym].edge_index
 
