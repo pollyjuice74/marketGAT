@@ -26,13 +26,13 @@ def build_graph(stock_symbols, startDate, endDate):
   # Add stock graphs to graph
   for s_graph in stock_graphs:
     graph[s_graph.sym].x = s_graph[s_graph.sym].x
-    graph[s_graph.sym].t = torch.tensor(s_graph[s_graph.sym].t)
+    graph[s_graph.sym].t = torch.tensor(s_graph[s_graph.sym].t).unsqueeze(1)
     graph[s_graph.sym].node_ids = s_graph[s_graph.sym].node_ids
     graph[s_graph.sym, 'next_in_sequence', s_graph.sym].edge_index = s_graph[s_graph.sym, 'next_in_sequence', s_graph.sym].edge_index
 
   # Add SPY stock graph
   graph[sp.sym].x = sp[sp.sym].x
-  graph[sp.sym].t = torch.tensor(sp[sp.sym].t)
+  graph[sp.sym].t = torch.tensor(sp[sp.sym].t).unsqueeze(1)
   graph[sp.sym].node_ids = sp[sp.sym].node_ids
   graph[sp.sym, 'next_in_sequence', sp.sym].edge_index = sp[sp.sym, 'next_in_sequence', sp.sym].edge_index
 
@@ -143,63 +143,99 @@ def movement(x_pred, pct=0.03):
 
 
 #######################################################################
-def sample(graph, sym, sample_len, pred_len, live):
-  sample_graph = HeteroData()
+def sample(graph, symbols, sample_len, pred_len, live):
+    sample_graph = HeteroData()
 
-  # random stock sample index
-  s_ix = torch.randint(0, graph[sym].x.size(0) - sample_len - pred_len, (1,)) if not live else int(graph[sym].x.size(0) - sample_len - pred_len)
-  curr_ix = s_ix+sample_len
+    while True:
+        try:  
+            # random SPY sample index
+            spy_ix = torch.randint(0, graph['SPY'].x.size(0) - sample_len - pred_len, (1,)) if not live else int(graph['SPY'].x.size(0) - sample_len - pred_len)
+            curr_ix = spy_ix + sample_len
 
-  # stock graph
-  sample_graph[sym].x = graph[sym].x[s_ix:curr_ix + pred_len]
-  sample_graph[sym].t = graph[sym].t[s_ix:curr_ix + pred_len]
-  sample_graph[sym].node_ids = graph[sym].node_ids[s_ix:curr_ix + pred_len]
+            # print( graph['SPY'].t.shape)
+            # SPY graph
+            sample_graph['SPY'].x = torch.cat([graph['SPY'].x[spy_ix:curr_ix + pred_len],
+                                              graph['SPY'].t[spy_ix:curr_ix + pred_len]], dim=1)
+            sample_graph['SPY'].node_ids = graph['SPY'].node_ids[spy_ix:curr_ix + pred_len]
 
-  # stock nodesIDs
-  first_nodeID = graph[sym].node_ids[s_ix]
-  curr_nodeID = graph[sym].node_ids[curr_ix]
-  last_nodeID = graph[sym].node_ids[curr_ix + pred_len]
+            # SPY nodesIDs
+            first_nodeID = graph['SPY'].node_ids[spy_ix]
+            curr_nodeID = graph['SPY'].node_ids[curr_ix]
+            last_nodeID = graph['SPY'].node_ids[curr_ix + pred_len]
 
-  # spy nodes ixs
-  f_sp_ix = torch.where(graph['SPY'].node_ids == first_nodeID.item())[0] # First
-  c_sp_ix = torch.where(graph['SPY'].node_ids == curr_nodeID.item())[0] # Current
-  l_sp_ix = torch.where(graph['SPY'].node_ids == last_nodeID.item())[0] # Last
+            # SPY edges
+            spy_edges = graph['SPY', 'next_in_sequence', 'SPY'].edge_index[:, spy_ix:curr_ix + pred_len] ###
 
-  # spy graph
-  sample_graph['SPY'].x = graph['SPY'].x[f_sp_ix:l_sp_ix]
-  sample_graph['SPY'].t = graph['SPY'].t[f_sp_ix:l_sp_ix]
-  sample_graph['SPY'].node_ids = graph['SPY'].node_ids[f_sp_ix:l_sp_ix]
+            for sym in symbols:
+              if sym == 'SPY':
+                continue
 
-  # sample edges
-  sym_edges = graph[sym, 'next_in_sequence', sym].edge_index[:, s_ix:curr_ix + pred_len] ###
-  spy_edges = graph['SPY', 'next_in_sequence', 'SPY'].edge_index[:, f_sp_ix:l_sp_ix] ###
-  same_time_edges =  graph['SPY', 'same_time', sym].edge_index[:, s_ix:curr_ix + pred_len -1] ###
+              # stock nodes ixs
+              f_sym_ix = torch.where(graph[sym].node_ids == first_nodeID.item())[0] # First
+              c_sym_ix = torch.where(graph[sym].node_ids == curr_nodeID.item())[0] # Current
+              l_sym_ix = torch.where(graph[sym].node_ids == last_nodeID.item())[0] # Last
 
-  dicts, edge_ixs = make_dicts([spy_edges, sym_edges]) # spy, sym
-  same_time_edges = same_time_ix(same_time_edges, dicts) # convert same time ixs from graph ixs to sample graph ixs
+              # print(f_sym_ix)
+              # stock graph
+              sample_graph[sym].x = torch.cat([graph[sym].x[f_sym_ix:l_sym_ix],
+                                              graph[sym].t[f_sym_ix:l_sym_ix]], dim=1)
+              sample_graph[sym].node_ids = graph[sym].node_ids[f_sym_ix:l_sym_ix]
 
-  # set edges
-  sample_graph['SPY', 'next_in_sequence', 'SPY'].edge_index = edge_ixs[0]
-  sample_graph[sym, 'next_in_sequence', sym].edge_index = edge_ixs[1]
-  sample_graph['SPY', 'same_time', sym].edge_index = same_time_edges
+              # stock edges
+              sym_edges = graph[sym, 'next_in_sequence', sym].edge_index[:, f_sym_ix:l_sym_ix] ###
+              same_time_edges =  graph['SPY', 'same_time', sym].edge_index[:, f_sym_ix:l_sym_ix -1] ###
 
-  # normalize stock data
-  sample_graph[sym].x_samp, sample_graph[sym].x_pred, buy_price = normalize(sample_graph[sym].x, curr_ix=curr_ix - s_ix, pred_ix=curr_ix+pred_len - s_ix) # shifts ixs by first stock ix
-  sample_graph['SPY'].x_samp, sample_graph['SPY'].x_pred, _ = normalize(sample_graph['SPY'].x, curr_ix=c_sp_ix - f_sp_ix, pred_ix=l_sp_ix - f_sp_ix) # shifts ixs by first spy stock ix
+              dicts, edge_ixs = make_dicts([spy_edges, sym_edges]) # spy, sym
+              same_time_edges = same_time_ix(same_time_edges, dicts) # convert same time ixs from graph ixs to sample graph ixs
+              # print(same_time_edges)
 
-  sample_graph.buy_price = buy_price
-  # EDGE_INDEX_SAMP, EDGE_INDEX_PRED
-  #
-  #
+              # set edges 
+              sample_graph[sym, 'next_in_sequence', sym].edge_index = edge_ixs[1]
+              sample_graph['SPY', 'same_time', sym].edge_index = same_time_edges
 
-  # REMOVE REDUNDANT sample_graph.x #
-  del sample_graph[sym].x
-  del sample_graph['SPY'].x
+              # normalize stock data and split into sample and pred
+              sample_graph[sym].x_samp, sample_graph[sym].x_pred, buy_price = normalize(sample_graph[sym].x, curr_ix=c_sym_ix - f_sym_ix, pred_ix=l_sym_ix - f_sym_ix) # shifts ixs by first stock ix
+            
+              sample_graph.buy_price = buy_price
 
-  if live:
-      return sample_graph, s_ix
-  else:
-      return sample_graph, len(sample_graph[sym].x_samp)
+              # split edges into sample and pred
+              sample_graph[sym, 'next_in_sequence', sym].edge_index_samp = sample_graph[sym, 'next_in_sequence', sym].edge_index[:, :c_sym_ix - f_sym_ix]
+              sample_graph[sym, 'next_in_sequence', sym].edge_index_pred = sample_graph[sym, 'next_in_sequence', sym].edge_index[:, c_sym_ix - f_sym_ix:l_sym_ix - f_sym_ix+1]
+              
+              sample_graph['SPY', 'same_time', sym].edge_index_samp = sample_graph['SPY', 'same_time', sym].edge_index[:, :c_sym_ix - f_sym_ix]
+              sample_graph['SPY', 'same_time', sym].edge_index_pred = sample_graph['SPY', 'same_time', sym].edge_index[:, c_sym_ix - f_sym_ix:l_sym_ix - f_sym_ix+1]
+              # print(sample_graph[sym, 'next_in_sequence', sym].edge_index_samp)
+
+            # set SPY edges, normalize SPY data and split into sample and pred
+            sample_graph['SPY', 'next_in_sequence', 'SPY'].edge_index = edge_ixs[0]
+            sample_graph['SPY'].x_samp, sample_graph['SPY'].x_pred, _ = normalize(sample_graph['SPY'].x, curr_ix=curr_ix - spy_ix, pred_ix=curr_ix+pred_len - spy_ix) # shifts ixs by first spy stock ix
+
+            # split 'next_in_sequence' edges into sample and pred
+            sample_graph['SPY', 'next_in_sequence', 'SPY'].edge_index_samp = sample_graph[sym, 'next_in_sequence', sym].edge_index[:, :curr_ix - spy_ix]
+            sample_graph['SPY', 'next_in_sequence', 'SPY'].edge_index_pred = sample_graph[sym, 'next_in_sequence', sym].edge_index[:, curr_ix - spy_ix:curr_ix+pred_len - spy_ix + 1]
+            # print(sample_graph['SPY'].x_pred)
+
+            # REMOVE REDUNDANT sample_graph.x #
+            del sample_graph['SPY'].x
+            del sample_graph['SPY', 'next_in_sequence', 'SPY'].edge_index
+
+            for sym in symbols:
+              if sym == 'SPY':
+                continue
+
+              del sample_graph[sym].x
+              del sample_graph[sym, 'next_in_sequence', sym].edge_index
+              del sample_graph['SPY', 'same_time', sym].edge_index
+
+            if live:
+                return sample_graph, spy_ix
+            else:
+                return sample_graph, len(sample_graph['SPY'].x_samp)
+
+        except Exception as e:
+            print(f"Retrying due to error: {e}")
+            continue
+
 #######################################################################
 
 
