@@ -1,7 +1,7 @@
 # marketNN
 This repo is implementing a Graph Neural Network using PyTorch Geometric to predict market activity in a short period of time. 
 
-For a mathematically rigorous explanation, this is the draft of the paper for this project: [here](paper.pdf)
+For a mathematically rigorous explanation, this is the draft of the paper for this project: [here](Simulating_Competition_in_Trading.pdf) or the `Simulating_Competition_in_Trading.pdf` file above.
 
 ## TODO:
 - MAKE A LIVE TRADING VIEW TRADER
