@@ -147,18 +147,44 @@ def normalize(x, curr_ix, pred_ix):
   return x_samp, x_pred, last_close
 
 
-def movement(x_pred, pct=0.03):
-    high = max(x_pred[0])
-    low = min(x_pred[1])
+def make_time_dict(sample_graph, stock_symbols):
+    time_dict = dict()
 
-    if high >= 1 + pct:
-        y = torch.tensor([1, 0, 0])  # above Pct return
-    elif low <= 1 - pct:
-        y = torch.tensor([0, 0, 1])  # below Pct return
-    else:
-        y = torch.tensor([0, 1, 0])  # within Pct return
+    # initialize zeros ix
+    for sym in stock_symbols:
+      print(sym)
+      print(sample_graph[sym].x_pred[:, 0])
+      time_dict[sym] = torch.zeros(sample_graph[sym].x_pred[:, 0].shape)
 
-    return y
+    return time_dict
+
+
+def movement(sample_graph, max_threshold=0.30, interval=0.01):
+    stock_symbols = [key for key in sample_graph.node_types if key.isupper()]
+    pcts = [round(i * interval, 2) for i in range(1, int(max_threshold / interval) + 1)]
+    thresholds = pcts + [-p for p in pcts]
+    thresholds.sort(reverse=True) # desc order pct changes intervals
+
+    # predictions
+    y = dict() # sym -> one-hot pred
+    time_dict = make_time_dict(sample_graph, stock_symbols) # initialized x's to all zero tensor
+
+    for sym in stock_symbols:
+      # print(sample_graph[sym].x_pred[:, 0])
+      high, high_ix = torch.max(sample_graph[sym].x_pred[:, 0], dim=0) # high of the x_pred data
+      # low, low_ix = torch.min(sample_graph[sym].x_pred[:, 1], dim=0) # high of the x_pred data
+
+      time_dict[sym][high_ix] = 1 # fills one-hot high_ix of high pct chg
+
+      y[sym] = torch.zeros( len(thresholds)+1 )
+
+      # assigns one-hot high pos to y tensor
+      for ix, pct in enumerate(thresholds):
+        if high >= 1 + pct:
+          y[sym][ix] = 1
+          break
+
+    return y, time_dict
 
 
 #######################################################################
