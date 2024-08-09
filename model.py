@@ -27,18 +27,9 @@ class MarketTransformer(Module):
 
     def forward(self, x_dict, edge_index_dict):
         for key, x in x_dict.items():
-            print(x.shape)
             x = self.embedding(x)
-            print(x.shape)
             x = self.pos_encoder(x)
-            print(x.shape)
-
-            batch_size, seq_len, hidden_dims = x.shape
-            x = x.view(batch_size * seq_len, hidden_dims)  # Reshape to [num_nodes, num_features]
-            print(x.shape)
-        
             x_dict[key], _ = self.self_attn(x,x,x)
-            print(f"{key}: {x_dict[key]} shape before GAT: {x_dict[key].shape}")
 
         x_dict = self.gat_convs(x_dict, edge_index_dict)
 
@@ -89,7 +80,7 @@ class PositionalEncoder(Module):
         div_term = torch.exp( torch.arange(0, d_model, 2).float() * (-torch.log( torch.tensor(1e5) ) / d_model) )
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
-        self.register_buffer( 'pe', pe.unsqueeze(0).transpose(0,1) )
+        self.register_buffer( 'pe', pe )
 
         self.dropout = Dropout(0.1)
 
