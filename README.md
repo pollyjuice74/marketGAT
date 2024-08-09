@@ -3,6 +3,9 @@ This repo is implementing a Graph Neural Network using PyTorch Geometric to pred
 
 For a mathematically rigorous explanation, this is the draft of the paper for this project: [here](Simulating_Competition_in_Trading.pdf) or the `Simulating_Competition_in_Trading.pdf` file above.
 
+*** Readme is outdated ***
+
+
 ## TODO:
 - MAKE A LIVE TRADING VIEW TRADER
 
