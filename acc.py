@@ -14,28 +14,30 @@ from utils import *
 
 
 class Account:
-    def __init__(self, balance=416.29, hidden_channels=7*30, epochs=2000, learning_rate=1e-05, live=True):
+    def __init__(self, sample_len=7*30, pred_len=7*5, hidden_dims=100, epochs=2000, learning_rate=1e-05, live=False):
         # Account info
         self.history = list() # Tape of transaction history
-        self.net_value = balance
+        self.net_value = 416.29
         self.portions = None # [1, 8]
         self.used = None # [1, 8]
         self.bets = 2 # Limited ammount of bets per day
         # Data
-        self.symbols = ['SPY', 'TBLA', "MS", "PBM", "TCRX", "URG", "UROY", "UEC", "TBLA"]#"AMZN", "TSLA", "AAPL", "GOOGL", "META", "GM", "MS"]
-        self.graph = build_graph(self.symbols)
+        self.symbols = ['SPY', 'TBLA', "MS", "PBM",] #"TCRX", "URG", "UROY", "UEC", "TBLA"]#"AMZN", "TSLA", "AAPL", "GOOGL", "META", "GM", "MS"]
+        self.graph = build_graph(self.symbols, startDate, endDate)
         self.sample_graph = None
+        self.sample_len, self.pred_len = sample_len, pred_len
         # Bets
         self.live = live
         self.current_bets = {sym: [] for sym in self.symbols if sym != 'SPY'} # sym: [(amount in $, shares), ..., ]
-        self.stocks = {sym: Stock(sym, live=live, graph=self.graph) for sym in self.symbols} # Graphs of stocks
+        # self.stocks = {sym: Stock(sym, live=live, graph=self.graph) for sym in self.symbols} # Graphs of stocks
         # Model
-        self.model = HGT(metadata=self.graph.metadata(), hidden_channels=hidden_channels)
+        self.model = MarketTransformer(metadata=self.graph.metadata())
         # Training
         self.epochs = epochs
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=learning_rate)
         self.criterion = nn.BCEWithLogitsLoss()
         ##################################################
+
 
     def get_portion(self):
         """
@@ -65,6 +67,7 @@ class Account:
         self.used[ix] = 1 # mark used vector
 
         return amount, ix
+
 
     def buy(self, sym, amount, ix):
         """
@@ -98,6 +101,7 @@ class Account:
         print("BUYING: ", sym, " for ", shares*price, " with ", left_over, " left over.")
         self.portions[ix] += left_over
 
+
     def sell(self, sym):
         """
         Sells all stock portions of a given symbol at the current stock price
@@ -121,44 +125,16 @@ class Account:
 
         self.current_bets[sym] = list() # remove bet
 
+
     def wait(self):
         """ Wait some time before continuing """
         time.sleep(10)
+
 
     def buy_conditions(self, pred):
         """ Test if preditction is for upward movement """
         return torch.equal(pred, torch.tensor([1,0,0]))
 
-    def train(self):
-        """
-        Trains model to predict a one hot label of size [1, 3]
-        corresponding to the stock's movement given a x day interval.
-        """
-        for i in range(self.epochs):
-            epoch_loss = 0
-            for sym in self.symbols:
-                print("\nTraining on: ", sym)
-
-                for _ in range(1000): # sample 1000 times
-                    sample_graph, ix = sample(self.graph, sym, sample_len=self.sample_len, pred_len=self.pred_len) # Samples Training graph nodes
-                    pct = torch.std(sample_graph[sym].x_samp) * 0.5 # try to predict a half std dev movement
-                    print("Percent pred: ", pct.item())
-
-                    while sample_graph[sym].x_pred.numel() > 0: # while there is more data to predict
-
-                        y_hat = self.model(sample_graph.x_samp_dict, sample_graph.edge_index_samp_dict) ###
-                        y = movement(sample_graph[sym].x_pred[0], pct=pct.item())
-
-                        loss = self.criterion(y_hat, y)
-                        ix = step(sample_graph, ix, sym)
-
-                        self.optimizer.zero_grad(set_to_none=True)
-                        loss.backward()
-                        self.optimizer.step()
-
-                epoch_loss += loss.item()
-
-                self.print(i, epoch_loss, freq=25)
 
     def rank(self, ):
         """
@@ -169,10 +145,12 @@ class Account:
         """
         pass
 
+
     def print(self, i, epoch_loss, freq=25):
         """ Prints epoch and loss data """
         if i % freq == 0:
             print(f"Epoch: {i+1}/{self.epochs}, Loss: {epoch_loss}")
+
 
     def test(self): # Live trading simulation
         """
@@ -240,6 +218,7 @@ class Account:
 
           self.print_acc()
 
+
     def print_acc(self):
         """ Print info for the account """
 
@@ -264,11 +243,12 @@ class Account:
                 Current bets: {self.current_bets}\n
                 Trailing prices:\n
                 { {sym: stock.trailing_data[0] for sym, stock in self.stocks.items() if stock != None and sym != 'SPY'} }
-              
+
                 LIVE PRICES:
-                { {sym: stock.price.item() for sym, stock in self.stocks.items() if stock is not None} }
+                { {sym: stock.price for sym, stock in self.stocks.items() if stock is not None} }
                 """
         )
+
 
     def update_graph(self): ###
         """
@@ -285,7 +265,6 @@ class Account:
             edge_index = torch.tensor([[ix],
                                        [ix+1],])
 
-
             # x, t, node_ids, edge_index
             self.graph[sym].x = torch.cat([self.graph[sym].x, x.unsqueeze(0)], dim=0)
             self.graph[sym].edge_index = torch.cat([self.graph[sym, 'next_in_sequence', sym].edge_index, edge_index], dim=1)
@@ -301,6 +280,7 @@ class Account:
               self.stocks[sym] = stock # update stocks
 
               stock.update()
+
 
     def pull_back(self, sym, pull=0.02):
         """
@@ -332,6 +312,40 @@ class Account:
 
         return False
 
+
+    def train(self):
+        """
+        Trains model to predict a one hot label of size [1, 3]
+        corresponding to the stock's movement given a x day interval.
+        """
+        for i in range(self.epochs):
+            epoch_loss = 0
+
+            for _ in range(100): # sample 100 times
+                print(self.symbols)
+                sample_graph, curr_ixs = sample(self.graph, self.symbols, sample_len=self.sample_len, pred_len=self.pred_len, live=False) # Samples Training graph nodes
+                curr_ixs = None
+
+                while sample_graph['SPY'].x_pred.numel() > 0: # while there is more data to predict
+                    y_hat_dict, time_dict_hat = self.model(sample_graph.x_samp_dict, sample_graph.edge_index_samp_dict) ###
+                    y_dict, time_dict = movement(sample_graph[sym].x_pred[0], pct=pct.item())
+
+                    # Calculate pct chg and time pred loss for each sym
+                    for sym in sample_graph.node_types:
+                        loss_y = self.criterion(y_hat_dict[sym], y_dict[sym])
+                        loss_time = self.criterion(time_dict_hat[sym], time_dict[sym])
+                        loss = loss_y + loss_time
+
+                        epoch_loss += loss.item()
+
+                        # Backward pass
+                        self.optimizer.zero_grad(set_to_none=True)
+                        loss.backward()
+                        self.optimizer.step()
+
+                    curr_ixs = step(sample_graph, curr_ixs, sym)
+
+            self.print(i, epoch_loss, freq=25)
 
 class Stock:
     def __init__(self, sym, live, graph):
