@@ -347,6 +347,7 @@ class Account:
 
             self.print(i, epoch_loss, freq=25)
 
+
 class Stock:
     def __init__(self, sym, live, graph):
         # Metadata
