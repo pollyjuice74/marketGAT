@@ -200,7 +200,7 @@ def sample(graph, symbols, sample_len, pred_len, live):
             # print( graph['SPY'].t.shape)
             # SPY graph
             sample_graph['SPY'].x = torch.cat([graph['SPY'].x[spy_ix:curr_ix + pred_len],
-                                              graph['SPY'].t[spy_ix:curr_ix + pred_len]], dim=1)
+                                               graph['SPY'].t[spy_ix:curr_ix + pred_len]], dim=1)
             sample_graph['SPY'].node_ids = graph['SPY'].node_ids[spy_ix:curr_ix + pred_len]
 
             # SPY nodesIDs
@@ -243,11 +243,11 @@ def sample(graph, symbols, sample_len, pred_len, live):
                 sample_graph.buy_price = buy_price
 
                 # split edges into sample and pred
-                sample_graph[sym, 'next_in_sequence', sym].edge_index_samp = sample_graph[sym, 'next_in_sequence', sym].edge_index[:, :c_sym_ix - f_sym_ix]
-                sample_graph[sym, 'next_in_sequence', sym].edge_index_pred = sample_graph[sym, 'next_in_sequence', sym].edge_index[:, c_sym_ix - f_sym_ix:l_sym_ix - f_sym_ix+1]
+                sample_graph[sym, 'next_in_sequence', sym].edge_index_samp = sample_graph[sym, 'next_in_sequence', sym].edge_index[:, :c_sym_ix - f_sym_ix - 1]
+                sample_graph[sym, 'next_in_sequence', sym].edge_index_pred = sample_graph[sym, 'next_in_sequence', sym].edge_index[:, c_sym_ix - f_sym_ix - 1:l_sym_ix - f_sym_ix + 1]
                 
                 sample_graph['SPY', 'same_time', sym].edge_index_samp = sample_graph['SPY', 'same_time', sym].edge_index[:, :c_sym_ix - f_sym_ix]
-                sample_graph['SPY', 'same_time', sym].edge_index_pred = sample_graph['SPY', 'same_time', sym].edge_index[:, c_sym_ix - f_sym_ix:l_sym_ix - f_sym_ix+1]
+                sample_graph['SPY', 'same_time', sym].edge_index_pred = sample_graph['SPY', 'same_time', sym].edge_index[:, c_sym_ix - f_sym_ix:l_sym_ix - f_sym_ix + 1]
                 # print(sample_graph[sym, 'next_in_sequence', sym].edge_index_samp)
 
             # set SPY edges, normalize SPY data and split into sample and pred
@@ -255,8 +255,8 @@ def sample(graph, symbols, sample_len, pred_len, live):
             sample_graph['SPY'].x_samp, sample_graph['SPY'].x_pred, _ = normalize(sample_graph['SPY'].x, curr_ix=curr_ix - spy_ix, pred_ix=curr_ix+pred_len - spy_ix) # shifts ixs by first spy stock ix
 
             # split 'next_in_sequence' edges into sample and pred
-            sample_graph['SPY', 'next_in_sequence', 'SPY'].edge_index_samp = sample_graph[sym, 'next_in_sequence', sym].edge_index[:, :curr_ix - spy_ix]
-            sample_graph['SPY', 'next_in_sequence', 'SPY'].edge_index_pred = sample_graph[sym, 'next_in_sequence', sym].edge_index[:, curr_ix - spy_ix:curr_ix+pred_len - spy_ix + 1]
+            sample_graph['SPY', 'next_in_sequence', 'SPY'].edge_index_samp = sample_graph[sym, 'next_in_sequence', sym].edge_index[:, :curr_ix - spy_ix - 1]
+            sample_graph['SPY', 'next_in_sequence', 'SPY'].edge_index_pred = sample_graph[sym, 'next_in_sequence', sym].edge_index[:, curr_ix - spy_ix - 1:curr_ix+pred_len - spy_ix + 1]
             # print(sample_graph['SPY'].x_pred)
 
             # REMOVE REDUNDANT sample_graph.x #
