@@ -39,6 +39,8 @@ def build_graph(stock_symbols, startDate, endDate):
   # Link all symbol nodes to SPY nodes at the 'same_time' t
   sp_nodes = graph[sp.sym].node_ids
   for sym in stock_symbols:
+    if sym == 'SPY': # skip SPY stock
+      continue
     stock_nodes = graph[sym].node_ids
     graph[sp.sym, 'same_time', sym].edge_index = link_graphs(sp_nodes, stock_nodes)
 
