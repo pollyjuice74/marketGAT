@@ -1,7 +1,7 @@
 # marketNN
 This repo is implementing a Graph Neural Network using PyTorch Geometric to predict market activity in a short period of time. 
 
-For a mathematically rigorous explanation, see this paper: [here](Probabilistic_Formalization_of_a_High_Volatility_Stock_Trading_Strategy_with_Automation_Potential.pdf) or the `Probabilistic_Formalization_of_a_High_Volatility_Stock_Trading_Strategy_with_Automation_Potential.pdf` file above.
+For a mathematically rigorous explanation, see this paper by clicking [here](Probabilistic_Formalization_of_a_High_Volatility_Stock_Trading_Strategy_with_Automation_Potential.pdf) or the `Probabilistic_Formalization_of_a_High_Volatility_Stock_Trading_Strategy_with_Automation_Potential.pdf` file above.
 
 *** Readme is outdated ***
 
